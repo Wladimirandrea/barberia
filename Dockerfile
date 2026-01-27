@@ -26,8 +26,6 @@ RUN composer install --no-dev --optimize-autoloader
 # Instalar dependencias de Vite
 RUN npm install && npm run build
 
-# Generar clave de Laravel
-RUN php artisan key:generate
 
 # Exponer puerto
 EXPOSE 80
