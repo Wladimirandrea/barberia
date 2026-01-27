@@ -15,10 +15,7 @@ class UserSeeder extends Seeder
      */
      public function run(): void
     {
-        // Desactivar foreign keys para truncar sin error
-        DB::statement('SET FOREIGN_KEY_CHECKS=0;');
-        User::truncate();
-        DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+       
 
         // Usuario Admin
         User::create([
