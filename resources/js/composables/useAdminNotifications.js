@@ -3,6 +3,8 @@ import { toast } from 'vue3-toastify'
 import { usePolling } from '@/composables/usePolling'
 
 export function useAdminNotifications() {
+  const API = import.meta.env.VITE_API_URL
+
   // 🔊 Control de sonido
   const sonidoHabilitado = ref(false)
   function activarSonido() {
@@ -29,7 +31,7 @@ export function useAdminNotifications() {
   /* ---------------------------------------------------
      🔵 POLLING: NUEVOS USUARIOS
   --------------------------------------------------- */
-  usePolling('http://127.0.0.1:8000/api/admin/users/check-new', (data) => {
+  usePolling(`${API}/admin/users/check-new`, (data) => {
     if (data.hasNewUsers) {
       toast.info('Nuevo usuario registrado 🚀')
 
@@ -51,7 +53,7 @@ export function useAdminNotifications() {
   /* ---------------------------------------------------
      🔴 POLLING: NUEVAS CITAS
   --------------------------------------------------- */
-  usePolling('http://127.0.0.1:8000/api/admin/appointments/check-new', (data) => {
+  usePolling(`${API}/admin/appointments/check-new`, (data) => {
     if (data.hasNewAppointments) {
       toast.info('Nueva cita registrada 📅')
 
