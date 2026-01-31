@@ -4,6 +4,9 @@ import { toast } from 'vue3-toastify'
 import { usePolling } from '@/composables/usePolling'
 
 export function useAdminNotifications() {
+  // Base URL desde entorno (local o producción)
+  const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000' // fallback para dev si no está definida
+
   // Control de sonido: solo se habilita después de interacción del usuario
   const sonidoHabilitado = ref(false)
 
@@ -24,9 +27,9 @@ export function useAdminNotifications() {
       window.removeEventListener('touchstart', enableAudio)
     }
 
-    window.addEventListener('click', enableAudio, { once: false })
-    window.addEventListener('keydown', enableAudio, { once: false })
-    window.addEventListener('touchstart', enableAudio, { once: false }) // para móviles
+    window.addEventListener('click', enableAudio)
+    window.addEventListener('keydown', enableAudio)
+    window.addEventListener('touchstart', enableAudio) // para móviles
   })
 
   // Notificaciones en pantalla (array para mostrarlas donde quieras)
@@ -46,28 +49,20 @@ export function useAdminNotifications() {
 
   // Función auxiliar segura para reproducir sonido
   function playNotificationSound() {
-    if (!sonidoHabilitado.value) {
-      return // No intentamos reproducir si no está habilitado
-    }
+    if (!sonidoHabilitado.value) return
 
     const audio = new Audio('/sounds/notify.mp3')
-    audio.volume = 0.6 // un poco más suave, ajusta a tu gusto
+    audio.volume = 0.6
 
     audio.play()
-      .then(() => {
-        console.log('Notificación sonora reproducida')
-      })
-      .catch(err => {
-        console.warn('No se pudo reproducir el sonido:', err.message)
-        // Si quieres, aquí podrías deshabilitar temporalmente o mostrar UI
-        // sonidoHabilitado.value = false
-      })
+      .then(() => console.log('Notificación sonora reproducida'))
+      .catch(err => console.warn('No se pudo reproducir el sonido:', err.message))
   }
 
   /* ---------------------------------------------------
      POLLING: NUEVOS USUARIOS
   --------------------------------------------------- */
-  usePolling('http://127.0.0.1:8000/api/admin/users/check-new', (data) => {
+  usePolling(`${apiBase}/api/admin/users/check-new`, (data) => {
     if (data?.hasNewUsers) {
       toast.info('Nuevo usuario registrado 🚀')
 
@@ -91,7 +86,7 @@ export function useAdminNotifications() {
   /* ---------------------------------------------------
      POLLING: NUEVAS CITAS
   --------------------------------------------------- */
-  usePolling('http://127.0.0.1:8000/api/admin/appointments/check-new', (data) => {
+  usePolling(`${apiBase}/api/admin/appointments/check-new`, (data) => {
     if (data?.hasNewAppointments) {
       toast.info('Nueva cita registrada 📅')
 
@@ -115,7 +110,7 @@ export function useAdminNotifications() {
   return {
     userName,
     notifications,
-    sonidoHabilitado,          // puedes usarlo en la UI si quieres un toggle
-    activarSonido             // por si quieres un botón manual
+    sonidoHabilitado,
+    activarSonido
   }
 }
