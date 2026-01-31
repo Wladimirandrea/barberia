@@ -37,6 +37,8 @@ class UserController extends Controller
 
         $user = User::create($data);
 
+        
+
         return response()->json([
             'success' => true,
             'message' => 'Usuario creado correctamente',
