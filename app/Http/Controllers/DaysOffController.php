@@ -36,73 +36,121 @@ class DaysOffController extends Controller
      * value = true  => Es día libre (No disponible)
      * value = false => Se trabaja (Disponible)
      */
+
     public function toggle(Request $request)
-    {
-        $payload = $request->only(['day', 'value']);
-        $validator = Validator::make($payload, [
-            'day'   => 'required|string',
-            'value' => 'required|boolean',
-        ]);
+{
+    $payload = $request->only(['day', 'value']);
 
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
-        /**
-         * Mapa basado en WEEKDAY() de MySQL:
-         * Lunes = 0, Martes = 1, Miércoles = 2, Jueves = 3, 
-         * Viernes = 4, Sábado = 5, Domingo = 6.
-         */
-        $map = [
-            'monday'    => 0,
-            'tuesday'   => 1,
-            'wednesday' => 2,
-            'thursday'  => 3,
-            'friday'    => 4,
-            'saturday'  => 5,
-            'sunday'    => 6,
-        ];
-
-        $dayName = strtolower($payload['day']);
-        
-        if (!array_key_exists($dayName, $map)) {
-            return response()->json(['message' => 'Día inválido'], 422);
-        }
-
-        $dw = $map[$dayName];
-        $isDayOff = (bool) $payload['value'];
-        $user = $request->user();
-
-        try {
-            DB::transaction(function () use ($user, $dayName, $isDayOff, $dw) {
-                // 1. Actualizar o crear la preferencia en days_offs
-                $daysOff = DaysOff::firstOrCreate(['user_id' => $user->id]);
-                $daysOff->{$dayName} = $isDayOff;
-                $daysOff->save();
-
-                // 2. Sincronizar con la tabla schedules
-                // Si isDayOff es true, is_available debe ser false.
-                // 3. Actualizar schedules en PostgreSQL
-Schedule::where('user_id', $user->id)
-    ->whereRaw('EXTRACT(DOW FROM schedules."date") = ?', [$pgDow])
-    ->where('is_blocked', false)
-    ->update([
-        'is_available' => !$isDayOff,
-        'updated_at'   => now()
+    $validator = Validator::make($payload, [
+        'day'   => 'required|string|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
+        'value' => 'required|boolean',
     ]);
 
-            });
+    if ($validator->fails()) {
+        return response()->json(['errors' => $validator->errors()], 422);
+    }
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Configuración de día libre actualizada',
+    $dayName = strtolower($payload['day']);
+    $isDayOff = (bool) $payload['value']; // Aseguramos booleano puro
+    $user = $request->user();
+
+    // Mapa MySQL WEEKDAY() style (0 = lunes, 6 = domingo)
+    $map = [
+        'monday'    => 0,
+        'tuesday'   => 1,
+        'wednesday' => 2,
+        'thursday'  => 3,
+        'friday'    => 4,
+        'saturday'  => 5,
+        'sunday'    => 6,
+    ];
+
+    $dw = $map[$dayName];
+    $pgDow = ($dw + 1) % 7; // Correcto: monday(0) → 1, sunday(6) → 0
+
+    try {
+        DB::transaction(function () use ($user, $dayName, $isDayOff, $pgDow) {
+
+            // 1. Actualizar o crear DaysOff
+            $daysOff = DaysOff::firstOrCreate(
+                ['user_id' => $user->id],
+                [
+                    'monday'    => false,
+                    'tuesday'   => false,
+                    'wednesday' => false,
+                    'thursday'  => false,
+                    'friday'    => false,
+                    'saturday'  => false,
+                    'sunday'    => false,
+                ]
+            );
+
+            $daysOff->{$dayName} = $isDayOff;
+            $daysOff->save();
+
+            // Log para debug
+            Log::info('DaysOff actualizado', [
+                'user_id' => $user->id,
                 'day'     => $dayName,
-                'value'   => $isDayOff
+                'value'   => $isDayOff,
             ]);
 
-        } catch (\Throwable $e) {
-            Log::error('DaysOff::toggle error: ' . $e->getMessage());
-            return response()->json(['message' => 'Error interno del servidor'], 500);
-        }
+            // 2. Actualizar schedules (solo si existen)
+            $affected = Schedule::where('user_id', $user->id)
+                ->whereRaw("EXTRACT(DOW FROM date) = ?", [$pgDow])
+                ->where('is_blocked', false)
+                ->update([
+                    'is_available' => !$isDayOff,
+                    'updated_at'   => now(),
+                ]);
+
+            Log::info('Schedules actualizados', [
+                'user_id'       => $user->id,
+                'pg_dow'        => $pgDow,
+                'new_available' => !$isDayOff,
+                'affected_rows' => $affected,
+            ]);
+
+            // Opcional: si affected === 0 y quieres debug extra
+            if ($affected === 0) {
+                Log::warning('No se actualizaron schedules', [
+                    'user_id' => $user->id,
+                    'pg_dow'  => $pgDow,
+                    'reason'  => 'posiblemente no hay registros o todos blocked',
+                ]);
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Configuración de día libre actualizada correctamente',
+            'day'     => $dayName,
+            'value'   => $isDayOff,
+        ]);
+
+    } catch (\Illuminate\Database\QueryException $e) {
+        Log::error('Error SQL en toggle days-off', [
+            'message' => $e->getMessage(),
+            'sql'     => $e->getSql() ?? 'N/A',
+            'bindings'=> $e->getBindings() ?? [],
+            'code'    => $e->getCode(),
+        ]);
+
+        return response()->json([
+            'message' => 'Error al actualizar la base de datos. Revisa los logs.',
+            'error'   => $e->getMessage(), // ← solo si APP_DEBUG=true
+        ], 500);
+
+    } catch (\Throwable $e) {
+        Log::error('Error general en DaysOff::toggle', [
+            'message' => $e->getMessage(),
+            'file'    => $e->getFile(),
+            'line'    => $e->getLine(),
+            'trace'   => $e->getTraceAsString(),
+        ]);
+
+        return response()->json(['message' => 'Error interno del servidor'], 500);
     }
+}
+    
 }
