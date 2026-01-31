@@ -82,13 +82,15 @@ class DaysOffController extends Controller
 
                 // 2. Sincronizar con la tabla schedules
                 // Si isDayOff es true, is_available debe ser false.
-                Schedule::where('user_id', $user->id)
-                    ->whereRaw("WEEKDAY(`date`) = ?", [$dw])
-                    ->where('is_blocked', false)
-                    ->update([
-                        'is_available' => !$isDayOff, 
-                        'updated_at'   => now()
-                    ]);
+                // 3. Actualizar schedules en PostgreSQL
+Schedule::where('user_id', $user->id)
+    ->whereRaw('EXTRACT(DOW FROM schedules."date") = ?', [$pgDow])
+    ->where('is_blocked', false)
+    ->update([
+        'is_available' => !$isDayOff,
+        'updated_at'   => now()
+    ]);
+
             });
 
             return response()->json([
