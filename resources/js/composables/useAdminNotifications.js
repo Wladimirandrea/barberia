@@ -1,45 +1,83 @@
+// src/composables/useAdminNotifications.js
 import { ref, onMounted } from 'vue'
 import { toast } from 'vue3-toastify'
 import { usePolling } from '@/composables/usePolling'
 
 export function useAdminNotifications() {
-  const API = import.meta.env.VITE_API_URL
-
-  // 🔊 Control de sonido
+  // Control de sonido: solo se habilita después de interacción del usuario
   const sonidoHabilitado = ref(false)
+
   function activarSonido() {
-    sonidoHabilitado.value = true
+    if (!sonidoHabilitado.value) {
+      sonidoHabilitado.value = true
+      console.log('Sonido habilitado tras interacción del usuario')
+    }
   }
 
-  // 🔔 Notificaciones en pantalla
+  // Habilitamos sonido con la primera interacción real del usuario
+  onMounted(() => {
+    const enableAudio = () => {
+      activarSonido()
+      // Limpiamos listeners para no acumular eventos
+      window.removeEventListener('click', enableAudio)
+      window.removeEventListener('keydown', enableAudio)
+      window.removeEventListener('touchstart', enableAudio)
+    }
+
+    window.addEventListener('click', enableAudio, { once: false })
+    window.addEventListener('keydown', enableAudio, { once: false })
+    window.addEventListener('touchstart', enableAudio, { once: false }) // para móviles
+  })
+
+  // Notificaciones en pantalla (array para mostrarlas donde quieras)
   const notifications = ref([])
 
-  // 🔐 Usuario logueado
+  // Nombre del usuario desde localStorage
   const userName = ref('')
   const user = localStorage.getItem('user')
   if (user) {
-    const parsed = JSON.parse(user)
-    userName.value = parsed.name
+    try {
+      const parsed = JSON.parse(user)
+      userName.value = parsed.name || 'Admin'
+    } catch (e) {
+      console.warn('Error parseando usuario de localStorage', e)
+    }
   }
 
-  // 🟦 Habilitar sonido después de la primera interacción
-  onMounted(() => {
-    window.addEventListener('click', activarSonido, { once: true })
-    window.addEventListener('keydown', activarSonido, { once: true })
-  })
+  // Función auxiliar segura para reproducir sonido
+  function playNotificationSound() {
+    if (!sonidoHabilitado.value) {
+      return // No intentamos reproducir si no está habilitado
+    }
+
+    const audio = new Audio('/sounds/notify.mp3')
+    audio.volume = 0.6 // un poco más suave, ajusta a tu gusto
+
+    audio.play()
+      .then(() => {
+        console.log('Notificación sonora reproducida')
+      })
+      .catch(err => {
+        console.warn('No se pudo reproducir el sonido:', err.message)
+        // Si quieres, aquí podrías deshabilitar temporalmente o mostrar UI
+        // sonidoHabilitado.value = false
+      })
+  }
 
   /* ---------------------------------------------------
-     🔵 POLLING: NUEVOS USUARIOS
+     POLLING: NUEVOS USUARIOS
   --------------------------------------------------- */
-  usePolling(`${API}/admin/users/check-new`, (data) => {
-    if (data.hasNewUsers) {
+  usePolling('http://127.0.0.1:8000/api/admin/users/check-new', (data) => {
+    if (data?.hasNewUsers) {
       toast.info('Nuevo usuario registrado 🚀')
 
-      if (sonidoHabilitado.value) {
-        new Audio('/sounds/notify.mp3').play()
-      }
+      playNotificationSound()
 
-      notifications.value.push('Nuevo usuario registrado')
+      notifications.value.push({
+        type: 'user',
+        message: 'Nuevo usuario registrado',
+        time: new Date().toLocaleTimeString()
+      })
 
       if (Notification.permission === 'granted') {
         new Notification('Nuevo usuario registrado 🚀', {
@@ -51,17 +89,19 @@ export function useAdminNotifications() {
   }, 10000)
 
   /* ---------------------------------------------------
-     🔴 POLLING: NUEVAS CITAS
+     POLLING: NUEVAS CITAS
   --------------------------------------------------- */
-  usePolling(`${API}/admin/appointments/check-new`, (data) => {
-    if (data.hasNewAppointments) {
+  usePolling('http://127.0.0.1:8000/api/admin/appointments/check-new', (data) => {
+    if (data?.hasNewAppointments) {
       toast.info('Nueva cita registrada 📅')
 
-      if (sonidoHabilitado.value) {
-        new Audio('/sounds/notify.mp3').play()
-      }
+      playNotificationSound()
 
-      notifications.value.push('Nueva cita registrada')
+      notifications.value.push({
+        type: 'appointment',
+        message: 'Nueva cita registrada',
+        time: new Date().toLocaleTimeString()
+      })
 
       if (Notification.permission === 'granted') {
         new Notification('Nueva cita registrada 📅', {
@@ -74,6 +114,8 @@ export function useAdminNotifications() {
 
   return {
     userName,
-    notifications
+    notifications,
+    sonidoHabilitado,          // puedes usarlo en la UI si quieres un toggle
+    activarSonido             // por si quieres un botón manual
   }
 }
