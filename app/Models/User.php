@@ -30,6 +30,20 @@ class User extends Authenticatable
 
     public function getImagenAttribute($value)
     {
-        return $value ? Storage::disk('public')->url($value) : Storage::disk('public')->url('avatar.png');
+        if (!$value) {
+            return null;
+        }
+
+        try {
+            return Storage::disk('s3')->url($value);
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
+
+
+    /* public function getImagenAttribute($value)
+    {
+        return $value ? Storage::disk('public')->url($value) : Storage::disk('public')->url('avatar.png');
+    } */
 }
