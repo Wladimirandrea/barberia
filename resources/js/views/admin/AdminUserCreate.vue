@@ -67,10 +67,9 @@ import api from '../../axios'
 import { useAuthStore } from '../../stores/auth'
 import Navbar from '@/componentes/Navbar.vue'
 import Breadcrumb from '@/componentes/Breadcrumb.vue'
-import { useAdminNotifications } from '@/composables/useAdminNotifications'
+import { useGlobalNotifications } from '@/composables/useGlobalNotifications'
 
-// 🟩 Notificaciones globales del admin
-const { userName, notifications } = useAdminNotifications()
+const { notifications } = useGlobalNotifications()
 
 const auth = useAuthStore()
 const router = useRouter()
